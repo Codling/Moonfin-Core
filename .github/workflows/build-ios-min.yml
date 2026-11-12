@@ -1,0 +1,53 @@
+name: iOS min (IPA non signee)
+on:
+  push:
+    branches: [ios17-build]
+  workflow_dispatch:
+env:
+  IOS_MIN: '17.0'
+jobs:
+  ios:
+    runs-on: macos-26
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v5
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.2'
+      - name: AetherEngine local + cible abaissee
+        run: |
+          git clone https://github.com/RadicalMuffinMan/AetherEngine ios/Packages/AetherEngine
+          git -C ios/Packages/AetherEngine checkout 34f149ba2dd483f490dca13a5a3027d58a9956f5
+          # correctifs #available eventuels (dossier patches/ du fork)
+          for p in patches/aether/*.patch; do [ -f "$p" ] && git -C ios/Packages/AetherEngine apply "$GITHUB_WORKSPACE/$p"; done
+          python3 patches/patch-ios-min.py . "${{ env.IOS_MIN }}"
+      - name: Dependances + coeurs libretro
+        run: |
+          flutter pub get
+          chmod +x ios/game_host/fetch_cores.sh ios/game_host/wrap_frameworks.sh
+          ./ios/game_host/fetch_cores.sh
+          ./ios/game_host/wrap_frameworks.sh
+      - name: Compilation
+        run: |
+          set -o pipefail
+          flutter build ipa --release --no-codesign 2>&1 | tee build.log
+      - name: Erreurs de compilation
+        if: failure()
+        run: grep -E "error:|is only available in" build.log | sort -u | head -300 > errors.txt; cat errors.txt
+      - uses: actions/upload-artifact@v6
+        if: always()
+        with:
+          name: logs
+          path: |
+            build.log
+            errors.txt
+      - name: Empaquetage IPA
+        run: |
+          APP=$(find build/ios/archive -type d -path '*/Products/Applications/*.app' | head -1)
+          plutil -p "$APP/Info.plist" | grep MinimumOSVersion
+          mkdir -p out/Payload && cp -R "$APP" out/Payload/
+          (cd out && zip -qry ../Moonfin_iOS_v3.1.0_iOS${{ env.IOS_MIN }}_unsigned.ipa Payload)
+      - uses: actions/upload-artifact@v6
+        with:
+          name: ipa
+          path: Moonfin_iOS_*_unsigned.ipa
