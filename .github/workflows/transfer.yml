@@ -1,0 +1,23 @@
+name: Copie IPA dans une branche
+on:
+  push:
+    branches: [ipa-transfer]
+permissions:
+  contents: write
+  actions: read
+jobs:
+  copy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v5
+        with:
+          name: ipa
+          run-id: 43328462371
+          github-token: ${{ github.token }}
+          path: out
+      - name: Commit sur la branche ipa
+        run: |
+          cd out && ls -la
+          git init -q -b ipa && git add -A
+          git -c user.name=ci -c user.email=ci@localhost commit -qm "IPA iOS 17.4 (run 43328462371)"
+          git push -f "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}" ipa
