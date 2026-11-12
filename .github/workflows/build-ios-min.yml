@@ -4,7 +4,7 @@ on:
     branches: [ios17-build]
   workflow_dispatch:
 env:
-  IOS_MIN: '17.0'
+  IOS_MIN: '17.4'
 jobs:
   ios:
     runs-on: macos-26

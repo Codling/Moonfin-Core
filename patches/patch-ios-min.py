@@ -29,7 +29,7 @@ pod.write_text(pod.read_text().replace("platform :ios, '18.0'", f"platform :ios,
 
 # 3) AetherEngine : plancher iOS
 pk = root / 'ios/Packages/AetherEngine/Package.swift'
-pk.write_text(pk.read_text().replace('.iOS(.v18)', f'.iOS(.v{major})'))
+pk.write_text(pk.read_text().replace('.iOS(.v18)', f'.iOS("{mini}")'))
 
 # 4) Package.resolved : retirer l'epingle distante d'AetherEngine
 for res in root.glob('ios/**/Package.resolved'):
