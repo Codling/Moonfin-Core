@@ -1,0 +1,91 @@
+diff --git a/Sources/AetherEngine/AetherEngine.swift b/Sources/AetherEngine/AetherEngine.swift
+index 9578cd1e..d440a0d6 100644
+--- a/Sources/AetherEngine/AetherEngine.swift
++++ b/Sources/AetherEngine/AetherEngine.swift
+@@ -4604,7 +4604,7 @@ public final class AetherEngine: ObservableObject {
+         defer { if let gen = attempt.generation { waitingLoadGenerations.remove(gen) } }
+         do {
+             let probe = try await withTaskCancellationHandler {
+-                try await SourceNetworkDiagnostics.$context.withValue(options.sourceDiagnosticsContext) {
++                try await SourceNetworkDiagnostics.withContextCompat(options.sourceDiagnosticsContext) {
+                     try await loadSession(
+                         source: source, startPosition: startPosition, options: options,
+                         audioSourceStreamIndex: audioSourceStreamIndex, discTitleID: discTitleID,
+diff --git a/Sources/AetherEngine/BlockingWork.swift b/Sources/AetherEngine/BlockingWork.swift
+index 7f092e47..ccb7f133 100644
+--- a/Sources/AetherEngine/BlockingWork.swift
++++ b/Sources/AetherEngine/BlockingWork.swift
+@@ -19,7 +19,7 @@ enum BlockingWork {
+         priority: TaskPriority? = nil,
+         operation: sending @escaping @isolated(any) () async -> Success
+     ) -> Task<Success, Never> {
+-        if #available(visionOS 2, *) {
++        if #available(iOS 18, visionOS 2, *) {
+             return Task.detached(executorPreference: BlockingExecutor.shared, priority: priority, operation: operation)
+         }
+         return Task.detached(priority: priority, operation: operation)
+@@ -30,7 +30,7 @@ enum BlockingWork {
+         priority: TaskPriority? = nil,
+         operation: sending @escaping @isolated(any) () async throws -> Success
+     ) -> Task<Success, any Error> {
+-        if #available(visionOS 2, *) {
++        if #available(iOS 18, visionOS 2, *) {
+             return Task.detached(executorPreference: BlockingExecutor.shared, priority: priority, operation: operation)
+         }
+         return Task.detached(priority: priority, operation: operation)
+@@ -39,7 +39,7 @@ enum BlockingWork {
+ 
+ /// Runs each job on the GCD global queue that matches its priority. Stateless and shared, so a
+ /// task's preference never outlives what it points at.
+-@available(visionOS 2, *)
++@available(iOS 18, visionOS 2, *)
+ final class BlockingExecutor: TaskExecutor {
+     static let shared = BlockingExecutor()
+ 
+diff --git a/Sources/AetherEngine/Diagnostics/SourceNetworkDiagnostics.swift b/Sources/AetherEngine/Diagnostics/SourceNetworkDiagnostics.swift
+index a3d34823..9e4c2462 100644
+--- a/Sources/AetherEngine/Diagnostics/SourceNetworkDiagnostics.swift
++++ b/Sources/AetherEngine/Diagnostics/SourceNetworkDiagnostics.swift
+@@ -14,6 +14,20 @@ public enum SourceNetworkDiagnostics {
+     }
+ 
+     @TaskLocal public static var context: Context?
++
++    /// iOS 17 back-deploy: binding a task local inside withTaskCancellationHandler aborts in
++    /// swift_task_dealloc on pre-iOS 18 runtimes when built with Xcode 26.5+, so below iOS 18 the
++    /// diagnostic context is simply not bound.
++    static func withContextCompat<R>(
++        _ value: Context?,
++        isolation: isolated (any Actor)? = #isolation,
++        operation: () async throws -> R
++    ) async rethrows -> R {
++        if #available(iOS 18, tvOS 18, macOS 15, visionOS 2, *) {
++            return try await $context.withValue(value, operation: operation)
++        }
++        return try await operation()
++    }
+     private static let requestContextKey = "AetherEngine.SourceNetworkDiagnostics.context"
+ 
+     static func request(_ request: URLRequest, context: Context?) -> URLRequest {
+diff --git a/Sources/AetherEngine/Native/NativeAVPlayerHost.swift b/Sources/AetherEngine/Native/NativeAVPlayerHost.swift
+index 7ee21dde..823f3106 100644
+--- a/Sources/AetherEngine/Native/NativeAVPlayerHost.swift
++++ b/Sources/AetherEngine/Native/NativeAVPlayerHost.swift
+@@ -2739,7 +2739,7 @@ final class NativeAVPlayerHost {
+             let codecs = variants.compactMap { $0.videoAttributes }.flatMap { $0.codecTypes }
+             guard RemoteHLSIngestFallback.shouldProbeCarriage(
+                 advertisesVideo: advertises, advertisedVideoCodecs: codecs) else { return }
+-            let evidence = await SourceNetworkDiagnostics.$context.withValue(diagnosticContext) {
++            let evidence = await SourceNetworkDiagnostics.withContextCompat(diagnosticContext) {
+                 await HLSCarriageProbe.classifyFromPlaylists(
+                     playlistURL: url,
+                     httpHeaders: httpHeaders,
+@@ -2772,7 +2772,7 @@ final class NativeAVPlayerHost {
+                 case .ready:
+                     break
+                 }
+-                let verdict = await SourceNetworkDiagnostics.$context.withValue(diagnosticContext) {
++                let verdict = await SourceNetworkDiagnostics.withContextCompat(diagnosticContext) {
+                     await HLSCarriageProbe.classifyDeferredSegmentHead(
+                         url: segmentURL, httpHeaders: httpHeaders, credentialOrigin: url)
+                 }
