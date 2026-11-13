@@ -5,6 +5,8 @@ on:
   workflow_dispatch:
 env:
   IOS_MIN: '17.4'
+permissions:
+  contents: write
 jobs:
   ios:
     runs-on: macos-26
@@ -56,3 +58,17 @@ jobs:
         with:
           name: ipa
           path: Moonfin_iOS_*_unsigned.ipa
+      - name: Symboles + publication sur la branche ipa
+        run: |
+          ARCH=$(find build/ios/archive -maxdepth 1 -name '*.xcarchive' | head -1)
+          DSYM="$ARCH/dSYMs/Runner.app.dSYM"
+          ls "$ARCH/dSYMs"
+          dwarfdump --uuid "$DSYM"
+          # cadres du plantage du 2026-11-13 (build precedent ; valable si le binaire est identique)
+          xcrun atos -o "$DSYM/Contents/Resources/DWARF/Runner" -arch arm64 -l 0x100000000 \
+            0x10044b44c 0x100048431 0x100046bc9 0x10005a0e9 0x100037ad9 0x1000d15a5 || true
+          mkdir -p pub && cp Moonfin_iOS_*_unsigned.ipa pub/
+          (cd "$ARCH/dSYMs" && zip -qry "$GITHUB_WORKSPACE/pub/Runner.app.dSYM.zip" Runner.app.dSYM)
+          cd pub && git init -q -b ipa && git add -A
+          git -c user.name=ci -c user.email=ci@localhost commit -qm "IPA + dSYM (run ${{ github.run_id }})"
+          git push -f "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}" ipa
